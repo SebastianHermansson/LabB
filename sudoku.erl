@@ -82,14 +82,15 @@ fill(M) ->
 %% refine entries which are lists by removing numbers they are known
 %% not to be
 
+
 refine(M) ->
     NewM =
 	refine_rows(
 	  transpose(
-	    refine_rows(
+        refine_rows(
 	      transpose(
 		unblocks(
-		  refine_rows(
+        refine_rows(
 		    blocks(M))))))),
     if M==NewM ->
 	    M;
@@ -97,8 +98,32 @@ refine(M) ->
 	    refine(NewM)
     end.
 
+%parallel refine
+%refine(M) ->
+%    NewM =
+%	p_refine_rows(
+%	  transpose(
+%        p_refine_rows(
+%	      transpose(
+%		unblocks(
+%       p_refine_rows(
+%		    blocks(M))))))),
+%    if M==NewM ->
+%	    M;
+%       true ->
+%	    refine(NewM)
+%    end.
+
 refine_rows(M) ->
     lists:map(fun refine_row/1,M).
+
+p_refine_rows(M) ->
+    pmap(fun refine_row/1,M).
+
+pmap(F, L) ->
+    S = self(),
+    Pids = [spawn(fun() -> S ! {self(), F(E)} end) || E <- L],
+    [receive {Pid, Result} -> Result end || Pid <- Pids].
 
 refine_row(Row) ->
     Entries = entries(Row),
@@ -208,6 +233,27 @@ solve_refined(M) ->
 	    solve_one(guesses(M))
     end.
 
+
+solve_two([]) ->
+    exit(no_solution);
+solve_two([m]) -> 
+    solve_refined(m);
+solve_two([m1, m2 | M]) ->
+    S = self(),
+    spawn(fun() -> S ! solve_refined(m1) end),
+    spawn(fun() -> S ! solve_refined(m2) end),
+    recieved_once = false,
+    receive
+        {'EXIT', no_solution} ->
+            if recieved_once ->
+                solve_two(M);
+            true ->
+                recieved_once = true
+            end;
+        Solution -> Solution
+    end.
+
+
 solve_one([]) ->
     exit(no_solution);
 solve_one([M]) ->
@@ -220,9 +266,11 @@ solve_one([M|Ms]) ->
 	    Solution
     end.
 
+
+
 %% benchmarks
 
--define(EXECUTIONS,100).
+-define(EXECUTIONS,50).
 
 bm(F) ->
     {T,_} = timer:tc(?MODULE,repeat,[F]),
@@ -237,7 +285,28 @@ benchmarks(Puzzles) ->
 benchmarks() ->
   {ok,Puzzles} = file:consult("problems.txt"),
   timer:tc(?MODULE,benchmarks,[Puzzles]).
-		      
+
+parallel_benchmarks([]) ->
+    [];
+parallel_benchmarks([{Name,M}|Xs]) ->
+    Parent = self(),
+    spawn_link(fun() ->
+        Parent !
+            {Name,bm(fun()->solve(M) end)}
+        end),
+        Results = parallel_benchmarks(Xs),
+    receive
+        Result -> Results ++ [Result]
+    end.
+
+
+parallel_benchmarks() ->
+  {ok,Puzzles} = file:consult("problems.txt"),
+  timer:tc(?MODULE,parallel_benchmarks,[Puzzles]).
+
+
+
+
 %% check solutions for validity
 
 valid_rows(M) ->
@@ -248,3 +317,33 @@ valid_row(Row) ->
 
 valid_solution(M) ->
     valid_rows(M) andalso valid_rows(transpose(M)) andalso valid_rows(blocks(M)).
+
+
+
+
+    
+
+%visualisation of guess(refine(fill(vegard_hanssen)))
+%[
+%   [[1,2,5,8],       [1,8,9],        [1,2,5,8,9],        6,              [2,5,7],        [2,5,7,8],      4,              [1,2,3,5,7,9],  [1,2,7,9]],
+%   [7,               [1,8,9],        [1,2,4,5,8,9],      [4,5,8],        [2,4,5],        3,              6,              [1,2,5,9],      [1,2,9]],
+%   [[2,4,5,6],       3,              [2,4,5,6],          [4,5,7],        9,              1,              [2,5,7],        8,              [2,7]],
+%   [[1,2,3,4,6,8],   [1,6,7,8,9],    [1,2,4,6,7,8,9],    [4,5,7,9],      [2,4,5,7],      [2,4,5,7,9],    [2,7,8,9],      [1,2,7,9],      [1,2,6,7,8,9]],
+%   [[2,4,6],         5,              [2,4,6,7,9],        1,              8,              [2,4,7,9],      [2,7,9],        [2,7,9],        3],
+%   [[1,2,8],         [1,7,8,9],      [1,2,7,8,9],        3,              [2,7],          6,              [2,7,8,9],      4,              5],
+%   [[1,5,8],         4,              [1,5,7,8],          2,              [1,3,5,7],      [5,7,8,9],      [3,5,7,8,9],    6,              [7,8,9]],    
+%   [9,               [1,6,7,8],      3,                  [4,5,7,8],      [1,4,5,6,7],    [4,5,7,8],      [2,5,7,8],      [2,5,7],        [2,4,7,8]],
+%   [[5,6,8],         2,              [5,6,7,8],          [4,5,7,8,9],    [3,4,5,6,7],    [4,5,7,8,9],    1,              [3,5,7,9],      [4,7,8,9]]
+%   ],
+
+%   [ 
+%   [[1,2,3,5,8],    [1,3,8,9],      [1,2,5,8,9],        6,              [2,5,7],        [2,5,7,8],      4,              [1,2,3,5,7,9],  [1,2,7,9]],
+%   [7,              [1,8,9],        [1,2,4,5,8,9],      [4,5,8],        [2,4,5],        3,              6,              [1,2,5,9],      [1,2,9]],
+%   [[2,3,4,5],      6,              [2,4,5],            [4,5,7],        9,              1,              [2,3,5,7],      8,              [2,7]],
+%   [[1,2,3,4,6,8], [1,3,7,8,9],     [1,2,4,6,7,8,9],    [4,5,7,9],      [2,4,5,7],      [2,4,5,7,9],    [2,7,8,9],      [1,2,7,9],      [1,2,6,7,8,9]],
+%   [[2,4,6],        5,              [2,4,6,7,9],        1,              8,              [2,4,7,9],      [2,7,9],        [2,7,9],        3],
+%   [[1,2,8],        [1,7,8,9],      [1,2,7,8,9],        3,              [2,7],          6,              [2,7,8,9],      4,              5],
+%   [[1,5,8],        4,              [1,5,7,8],          2,              [1,3,5,7],      [5,7,8,9],      [3,5,7,8,9],    6,              [7,8,9]],
+%   [9,              [1,7,8],        3,                  [4,5,7,8],      [1,4,5,6,7],    [4,5,7,8],      [2,5,7,8],      [2,5,7],        [2,4,7,8]],
+%   [[5,6,8],        2,              [5,6,7,8],          [4,5,7,8,9],    [3,4,5,6,7],    [4,5,7,8,9],    1,              [3,5,7,9],      [4,7,8,9]]
+%  ]

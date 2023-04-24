@@ -1,0 +1,51 @@
+firsly whoever made this is commiting sudoku heresy. This shit breaks the very concept of sudoku. 
+You dont solve a sudoku just because you found a viable solution, it has to be THE solution that can be found WITHOUT GUESSING.
+This solver would find a solution given a empty sudoku and a empty sudoku is not a viable sudoku since it has more than one solution.
+i do not condone this... 
+
+
+I chose to lower the EXECUTIONS to 50 to make it easier to test
+
+I dont know how many cores were used but i run it on a 1,4 GHz Dual-Core Intel Core i5 from a macbook air
+
+----- output from sequencial benchmark (45 sec total)------
+{36896206,
+ [{wildcat,0.39308},
+  {diabolical,48.40776},
+  {vegard_hanssen,112.74028},
+  {challenge,8.95724},
+  {challenge1,516.5965},
+  {extreme,9.86632},
+  {seventeen,40.96206}]}
+
+----- Output from parallel benchmark (23 sec total)-----
+{22616958,
+ [{wildcat,3.18692},
+  {challenge,14.65522},
+  {extreme,46.7994},
+  {seventeen,74.43624000000001},
+  {diabolical,114.83596},
+  {vegard_hanssen,169.92935999999997},
+  {challenge1,452.32872}]}
+
+I think it is neat that the parallel benchmark sorts based on solvetime since those processes return sooner.
+
+
+
+We did not have time to finish properly since we were a bit backed up with Lab A. so neither of the parallization below works, 
+but we think that the thought behind the solutions is sound. We would appriciate any help you can give regarding the problems.
+
+---------- Parallelizing the solver --------
+When prallelizing the refinment we encountered some problems. 
+We used a pmap to map the refine_row function over the rows and modified the refine() function to use the new refine_rows().
+This works fine when just trying to refine rows, but when using the solve we end up in a infinate loop. 
+We suspect this might be because the solve moves on before all processes are finished and then shit breaks since the rows are whack. 
+
+This can be seen in p_refine_rows()
+
+
+For the guessing we would like to start a process for each guess and then if one finds a solution terminate all the other. 
+But this would create a very large amount of processes and we believe that this would create more problems than it would solve and thus 
+we chose to limit ourself to 2 guesses. since this is recursive this could also be to much and therefore we are not sure if this would increase performance.
+
+this can be seen in guess_two()

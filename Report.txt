@@ -8,44 +8,175 @@ I chose to lower the EXECUTIONS to 50 to make it easier to test
 
 I dont know how many cores were used but i run it on a 1,4 GHz Dual-Core Intel Core i5 from a macbook air
 
------ output from sequencial benchmark (45 sec total)------
-{36896206,
- [{wildcat,0.39308},
-  {diabolical,48.40776},
-  {vegard_hanssen,112.74028},
-  {challenge,8.95724},
-  {challenge1,516.5965},
-  {extreme,9.86632},
-  {seventeen,40.96206}]}
+------------ parallel 21,5 sec ----------------
+{21489497,
+ [{wildcat,2.24442},
+  {extreme,21.726080000000003},
+  {challenge,30.93636},
+  {seventeen,97.69919999999999},
+  {diabolical,123.39238},
+  {vegard_hanssen,211.74364000000003},
+  {challenge1,429.77694}]}
 
------ Output from parallel benchmark (23 sec total)-----
-{22616958,
- [{wildcat,3.18692},
-  {challenge,14.65522},
-  {extreme,46.7994},
-  {seventeen,74.43624000000001},
-  {diabolical,114.83596},
-  {vegard_hanssen,169.92935999999997},
-  {challenge1,452.32872}]}
-
-I think it is neat that the parallel benchmark sorts based on solvetime since those processes return sooner.
+------------ sequential 28sec ----------------
+{27804766,                   
+ [{wildcat,0.4163},
+  {diabolical,55.822559999999996},
+  {vegard_hanssen,114.00274},
+  {challenge,7.81892},
+  {challenge1,329.44692},
+  {extreme,10.28312},
+  {seventeen,38.30388}]}
 
 
+_________________________________ parallelizing the refinement ____________________________________
+We used a pmap that preseves order to map the refine_row() function over the rows and modified the refine() function to use the new refine_rows().
+This means that each row gets its own process to refine it, going further and parallelizing the refine_row() feels like it would create
+too small tasks to get performance increase.
 
-We did not have time to finish properly since we were a bit backed up with Lab A. so neither of the parallization below works, 
-but we think that the thought behind the solutions is sound. We would appriciate any help you can give regarding the problems.
+benchmark data with p_refine
 
----------- Parallelizing the solver --------
-When prallelizing the refinment we encountered some problems. 
-We used a pmap to map the refine_row function over the rows and modified the refine() function to use the new refine_rows().
-This works fine when just trying to refine rows, but when using the solve we end up in a infinate loop. 
-We suspect this might be because the solve moves on before all processes are finished and then shit breaks since the rows are whack. 
+----- output from sequencial benchmark (102 sec total)------
+{102270527,
+ [{wildcat,1.4233399999999998},
+  {diabolical,157.0368},
+  {vegard_hanssen,332.59246},
+  {challenge,21.9872},
+  {challenge1,1348.73352},
+  {extreme,43.92476},
+  {seventeen,139.71092000000002}]}
 
-This can be seen in p_refine_rows()
+----- Output from parallel benchmark (64 sec total)-----
+{63800069,
+ [{seventeen,190.02394},
+  {extreme,64.81591999999999},
+  {challenge1,1275.9956000000002},
+  {challenge,60.00528},
+  {vegard_hanssen,417.11982},
+  {diabolical,235.85173999999998},
+  {wildcat,3.5518400000000003}]}
 
+As seen this performance is quite bad, but we cannot figure out why it is that bad. we have tried flushing the mailbox, which did nothing but 
+
+
+_________________________________ parallelizing the guesswork ____________________________________
 
 For the guessing we would like to start a process for each guess and then if one finds a solution terminate all the other. 
-But this would create a very large amount of processes and we believe that this would create more problems than it would solve and thus 
-we chose to limit ourself to 2 guesses. since this is recursive this could also be to much and therefore we are not sure if this would increase performance.
+We do this by creating a helper function solve_all/2 which keeps track of the processes it spawns. so if M is not empty in solve_all/1 
+we then proceed to create M processes and then start listening for their answers. At one point we must reach a point where the guesses are empty 
+from the start and then we will hit the basecase of solve_all/1 or a solution and start returning from there.
 
-this can be seen in guess_two()
+-------------- Sequencial benchmark (57 sec) -----------------
+{57477290,
+ [{wildcat,0.3623},
+  {diabolical,45.03304},
+  {vegard_hanssen,130.86274},
+  {challenge,5.95192},
+  {challenge1,273.28476},
+  {extreme,30.55018},
+  {seventeen,663.499}]}
+
+---------------- Parallel benchmark (57 sec) ------------------------
+{57244637,
+ [{seventeen,1144.3387},
+  {extreme,517.90012},
+  {challenge1,1030.36454},
+  {challenge,191.70195999999999},
+  {vegard_hanssen,935.85154},
+  {diabolical,596.96816},
+  {wildcat,30.20624}]}
+
+This is not very fast, but we believe this could be solved with some granularity control. Since we make sure to kill all unfinished 
+processes when finding a solution by killing them and their linked processes this should cascade and kill all processes. we also clear the 
+mailbox which could slow down performance. So we cannot see why this is this slow, and must draw the conclusion that our granularity is to big, 
+and maybe we should control the depth we go to and then start the solve_one() solver instead.
+
+
+Some tests with granularity control.
+i is the amount of levels of guesses we go to (0 indexed)
+
+here we also needed to make a new p_solve(),p_solve_refined() to implement the granularity and help keep track on which level of the guessing tree we are.
+
+EXECUTIONS = 10
+
+{4670320,                               with i = 1
+ [{seventeen,81.3785},
+  {extreme,56.5304},
+  {challenge1,466.97490000000005},
+  {challenge,10.619299999999999},
+  {vegard_hanssen,95.3567},
+  {diabolical,21.075},
+  {wildcat,5.4557}]}
+
+{3559513,                              with i = 2
+ [{seventeen,146.6645},
+  {extreme,107.9323},
+  {challenge1,355.907},
+  {challenge,12.044},
+  {vegard_hanssen,196.0315},
+  {diabolical,56.1843},
+  {wildcat,9.1522}]}
+
+
+{3936123,                               with i = 3
+ [{seventeen,304.18829999999997},
+  {extreme,176.7188},
+  {challenge1,393.5527},
+  {challenge,16.7197},
+  {vegard_hanssen,249.3409},
+  {diabolical,108.0495},
+  {wildcat,14.905}]}
+
+
+3> sudoku:parallel_benchmarks().      with i=5
+{7112800,
+ [{seventeen,711.1831},
+  {extreme,157.22039999999998},
+  {challenge1,495.71790000000004},
+  {challenge,46.343},
+  {vegard_hanssen,295.8989},
+  {diabolical,194.7151},
+  {wildcat,9.767100000000001}]}
+
+{12917279,                            with i = 100
+ [{seventeen,1290.5832},
+  {extreme,935.6269},
+  {challenge1,1273.7956000000001},
+  {challenge,21.0551},
+  {vegard_hanssen,1131.1507},
+  {diabolical,915.2191},
+  {wildcat,54.889900000000004}]}
+
+
+As we can see i=2 was the best, with i=3 a close second. 
+Note how slow the one without granularity control is. 
+
+
+
+EXECUTIONS = 50 again
+
+Guesses parallel only with granularity control i=2
+
+13> sudoku:parallel_benchmarks().     17 sec
+{17350002,
+ [{seventeen,149.29226},
+  {extreme,86.14389999999999},
+  {challenge1,346.9881},
+  {challenge,17.62298},
+  {vegard_hanssen,178.62542000000002},
+  {diabolical,52.03794},
+  {wildcat,6.4442200000000005}]}
+
+
+14> sudoku:benchmarks().              37 sec
+{33815852,
+ [{wildcat,0.37324},
+  {diabolical,58.73818},
+  {vegard_hanssen,115.18008},
+  {challenge,7.81208},
+  {challenge1,447.45024},
+  {extreme,9.84436},
+  {seventeen,36.91808}]}
+
+As we can see it is much better than without the granularity control and the original benchmark but not that different from the first parallel_benchmarks score.
+But we think almost 1/2 score of the first benchmark is an OK score.
